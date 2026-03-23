@@ -42,7 +42,15 @@ pipeline {
             }
         }
 
-        stage('3. Docker Build & Push to ECR') {
+       stage('Build Artifact') {
+    steps {
+        dir('webapp') {
+            sh 'mvn clean package -DskipTests'
+        }
+    }
+}
+
+        stage('Docker Build & Push to ECR') {
             steps {
                 sshagent(['docker-server']) { 
                     sh """
