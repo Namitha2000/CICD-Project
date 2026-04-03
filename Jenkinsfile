@@ -36,12 +36,11 @@ pipeline {
              
                 script {
     def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-    def ecrUrl = params.ecr_repo_url
-    def branch = params.BRANCH
+    def ecrUrl = params.ecr_repo_url ?: '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project'
+    def branch = params.BRANCH ?: 'master'
     env.IMAGE_TAG = "${ecrUrl}:${branch}-${commitShort}-${BUILD_NUMBER}"
     echo "Image tag will be: ${env.IMAGE_TAG}"
-                }
-   
+}  
              }
         }
 
