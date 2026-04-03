@@ -19,7 +19,7 @@ pipeline {
             script: [
                 classpath: [],
                 sandbox: true,
-                script: '''return ['dev', 'UIT', 'main']'''
+                script: '''return ['dev', 'UIT', 'master']'''
             ]
         ]
     )         
@@ -29,12 +29,13 @@ pipeline {
         string(name: 'deploy_IP', defaultValue: '13.50.101.149', description: 'IP of Final Deployment Server')
         string(name: 'ecr_repo_url', defaultValue: '<AWS_ACCOUNT_ID>.dkr.ecr.eu-north-1.amazonaws.com/webapp-repo', description: 'Full ECR URI')
         string(name: 'aws_region', defaultValue: 'eu-north-1', description: 'AWS Region (Stockholm)')
+    
     }
 
     environment {
         SONARQUBE_URL = "http://${params.sonar_IP}:9000"
         SONARQUBE_TOKEN = credentials('sonar-token')
-        IMAGE_TAG = "${params.ecr_repo_url}:${BUILD_NUMBER}"
+        IMAGE_TAG = '' 
     }
 
     stages {
@@ -43,7 +44,13 @@ pipeline {
                 git branch: "${params.BRANCH}",
                     credentialsId: 'jenkins-ssh-key', 
                     url: 'git@github.com:Namitha2000/CICD-Project.git'
-            }
+                script {
+                def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                env.IMAGE_TAG = "${params.ecr_repo_url}:${params.BRANCH}-${commitShort}-${BUILD_NUMBER}"
+                echo "Image tag will be: ${env.IMAGE_TAG}"
+                }
+                
+             }
         }
 
         stage('2. Sonarqube Analysis') {
