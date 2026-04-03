@@ -33,12 +33,15 @@ pipeline {
                 git branch: "${params.BRANCH}",
                     credentialsId: 'jenkins-ssh-key', 
                     url: 'git@github.com:Namitha2000/CICD-Project.git'
+             
                 script {
-                def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                env.IMAGE_TAG = "${params.ecr_repo_url}:${params.BRANCH}-${commitShort}-${BUILD_NUMBER}"
-                echo "Image tag will be: ${env.IMAGE_TAG}"
+    def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+    def ecrUrl = params.ecr_repo_url
+    def branch = params.BRANCH
+    env.IMAGE_TAG = "${ecrUrl}:${branch}-${commitShort}-${BUILD_NUMBER}"
+    echo "Image tag will be: ${env.IMAGE_TAG}"
                 }
-                
+   
              }
         }
 
