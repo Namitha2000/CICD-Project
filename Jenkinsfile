@@ -16,7 +16,7 @@ pipeline {
         string(name: 'sonar_IP', defaultValue: '13.63.34.172', description: 'SonarQube Server IP')
         string(name: 'docker_build_IP', defaultValue: '<YOUR_BUILD_SERVER_IP>', description: 'IP of server for Docker Build')
         string(name: 'deploy_IP', defaultValue: '13.50.101.149', description: 'IP of Final Deployment Server')
-        string(name: 'ecr_repo_url', defaultValue: '<AWS_ACCOUNT_ID>.dkr.ecr.eu-north-1.amazonaws.com/webapp-repo', description: 'Full ECR URI')
+        string(name: 'ecr_repo_url', defaultValue: '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project', description: 'Full ECR URI')
         string(name: 'aws_region', defaultValue: 'eu-north-1', description: 'AWS Region (Stockholm)')
     
     }
