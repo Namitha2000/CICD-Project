@@ -12,17 +12,16 @@ pipeline {
             choices: ['dev', 'UIT', 'master'],
             description: 'Select branch to build'
         )
-        string(name: 'sonar_IP',        defaultValue: '13.63.34.172',                                               description: 'SonarQube Server IP')
-        string(name: 'docker_build_IP', defaultValue: '<YOUR_BUILD_SERVER_IP>',                                      description: 'IP of server for Docker Build')
-        string(name: 'deploy_IP',       defaultValue: '13.50.101.149',                                               description: 'IP of Final Deployment Server')
-        string(name: 'ecr_repo_url',    defaultValue: '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project', description: 'Full ECR URI')
-        string(name: 'aws_region',      defaultValue: 'eu-north-1',                                                  description: 'AWS Region')
+        string(name: 'sonar_IP',        defaultValue: '13.63.34.172')
+        string(name: 'docker_build_IP', defaultValue: '16.170.246.244')
+        string(name: 'deploy_IP',       defaultValue: '13.50.101.149')
+        string(name: 'ecr_repo_url',    defaultValue: '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project')
+        string(name: 'aws_region',      defaultValue: 'eu-north-1')
     }
 
     environment {
         SONARQUBE_URL   = "http://${params.sonar_IP}:9000"
         SONARQUBE_TOKEN = credentials('sonar-token')
-        IMAGE_TAG       = ''
     }
 
     stages {
@@ -35,22 +34,15 @@ pipeline {
 
                 script {
                     def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def ecrUrl = params.ecr_repo_url
+                    def branch = params.BRANCH
 
-                    def branch = params.BRANCH?.trim() ? params.BRANCH : 'master'
-                    def ecrUrl = params.ecr_repo_url?.trim() ? params.ecr_repo_url : '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project'
+                    IMAGE_TAG = "${ecrUrl}:${branch}-${commitShort}-${BUILD_NUMBER}"
 
-                    def ecrRegistry = ecrUrl.split('/')[0]
+                    // Export to env explicitly
+                    env.IMAGE_TAG = IMAGE_TAG
 
-                    echo "DEBUG ecr_repo_url = '${params.ecr_repo_url}'"
-                    echo "DEBUG branch = '${branch}'"
-                    echo "DEBUG commit = '${commitShort}'"
-                    echo "DEBUG build = '${BUILD_NUMBER}'"
-
-                    env.IMAGE_TAG = "${ecrUrl}:${branch}-${commitShort}-${BUILD_NUMBER}"
-                    env.ECR_REGISTRY = ecrRegistry
-
-                    echo "✅ Image tag will be: ${env.IMAGE_TAG}"
-                    echo "✅ ECR Registry: ${env.ECR_REGISTRY}"
+                    echo "IMAGE_TAG = ${env.IMAGE_TAG}"
                 }
             }
         }
@@ -58,12 +50,12 @@ pipeline {
         stage('2. Sonarqube Analysis') {
             steps {
                 dir('webapp') {
-                    sh """
+                    sh '''
                     mvn sonar:sonar \
                     -Dsonar.projectKey=CICDProject \
                     -Dsonar.host.url=$SONARQUBE_URL \
                     -Dsonar.token=$SONARQUBE_TOKEN
-                    """
+                    '''
                 }
             }
         }
@@ -71,35 +63,33 @@ pipeline {
         stage('3. Docker Build & Push to ECR') {
             steps {
                 sshagent(['docker-server']) {
-                    sh """
+                    sh '''
                     set -e
 
-                    # Prepare remote server
-                    ssh -o StrictHostKeyChecking=no ubuntu@${params.docker_build_IP} 'mkdir -p ~/build_temp'
+                    echo "Using IMAGE_TAG=$IMAGE_TAG"
 
-                    # Copy project
-                    scp -o StrictHostKeyChecking=no -r ./* ubuntu@${params.docker_build_IP}:~/build_temp/
+                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.docker_build_IP + ''' 'mkdir -p ~/build_temp'
+                    
+                    scp -o StrictHostKeyChecking=no -r ./* ubuntu@''' + params.docker_build_IP + ''':~/build_temp/
 
-                    # Execute remotely
-                    ssh -o StrictHostKeyChecking=no ubuntu@${params.docker_build_IP} << EOF
+                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.docker_build_IP + ''' << EOF
                         set -e
                         cd ~/build_temp
 
                         echo "Logging into ECR..."
-                        aws ecr get-login-password --region ${params.aws_region} | \
-                        docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                        aws ecr get-login-password --region ''' + params.aws_region + ''' | \\
+                        docker login --username AWS --password-stdin ''' + params.ecr_repo_url + '''
 
                         echo "Building Docker image..."
-                        docker build -t ${env.IMAGE_TAG} .
+                        docker build -t ''' + '${IMAGE_TAG}' + ''' .
 
                         echo "Pushing Docker image..."
-                        docker push ${env.IMAGE_TAG}
+                        docker push ''' + '${IMAGE_TAG}' + '''
 
-                        echo "Cleaning up..."
-                        docker rmi ${env.IMAGE_TAG}
-                        cd ~ && rm -rf ~/build_temp
+                        docker rmi ''' + '${IMAGE_TAG}' + '''
+                        rm -rf ~/build_temp
 EOF
-                    """
+                    '''
                 }
             }
         }
@@ -107,30 +97,23 @@ EOF
         stage('4. Deploy to Production EC2') {
             steps {
                 sshagent(['docker-server']) {
-                    sh """
-                    set -e
-
-                    ssh -o StrictHostKeyChecking=no ubuntu@${params.deploy_IP} << EOF
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.deploy_IP + ''' << EOF
                         set -e
 
-                        echo "Logging into ECR..."
-                        aws ecr get-login-password --region ${params.aws_region} | \
-                        docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                        aws ecr get-login-password --region ''' + params.aws_region + ''' | \\
+                        docker login --username AWS --password-stdin ''' + params.ecr_repo_url + '''
 
-                        echo "Stopping old container..."
                         docker stop webapp-container || true
                         docker rm webapp-container || true
 
-                        echo "Pulling latest image..."
-                        docker pull ${env.IMAGE_TAG}
+                        docker pull ''' + '${IMAGE_TAG}' + '''
 
-                        echo "Running new container..."
-                        docker run -d --name webapp-container -p 8080:8080 ${env.IMAGE_TAG}
+                        docker run -d --name webapp-container -p 8080:8080 ''' + '${IMAGE_TAG}' + '''
 
-                        echo "Cleaning unused images..."
                         docker image prune -af
 EOF
-                    """
+                    '''
                 }
             }
         }
@@ -142,3 +125,4 @@ EOF
         }
     }
 }
+
