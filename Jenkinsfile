@@ -7,6 +7,23 @@ pipeline {
     }
 
     parameters {
+        
+        activeChoice(
+        name: 'BRANCH',
+        description: 'Select branch to build',
+        choiceType: 'PT_SINGLE_SELECT',
+        filterLength: 1,
+        filterable: false,
+        script: [
+            $class: 'GroovyScript',
+            script: [
+                classpath: [],
+                sandbox: true,
+                script: '''return ['dev', 'UIT', 'main']'''
+            ]
+        ]
+    )         
+  
         string(name: 'sonar_IP', defaultValue: '13.63.34.172', description: 'SonarQube Server IP')
         string(name: 'docker_build_IP', defaultValue: '<YOUR_BUILD_SERVER_IP>', description: 'IP of server for Docker Build')
         string(name: 'deploy_IP', defaultValue: '13.50.101.149', description: 'IP of Final Deployment Server')
@@ -23,7 +40,7 @@ pipeline {
     stages {
         stage('1. Checkout Code') {
             steps {
-                git branch: 'master',
+                git branch: "${params.BRANCH}",
                     credentialsId: 'jenkins-ssh-key', 
                     url: 'git@github.com:Namitha2000/CICD-Project.git'
             }
@@ -42,14 +59,6 @@ pipeline {
             }
         }
 
-       stage('Build Artifact') {
-    steps {
-        dir('webapp') {
-            sh 'mvn clean package -DskipTests'
-        }
-    }
-}
-
         stage('Docker Build & Push to ECR') {
             steps {
                 sshagent(['docker-server']) { 
@@ -63,7 +72,7 @@ pipeline {
                         cd ~/build_temp
                         
                         # Login to ECR in Stockholm
-                        aws ecr get-login-password --region ${params.aws_region} | \
+                        aws ecr get-login-password --region ${params.aws_region} | \\
                         docker login --username AWS --password-stdin ${params.ecr_repo_url}
 
                         # Build the image
@@ -87,7 +96,7 @@ EOF
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@${params.deploy_IP} << 'EOF'
                         # Login to ECR
-                        aws ecr get-login-password --region ${params.aws_region} | \
+                        aws ecr get-login-password --region ${params.aws_region} | \\
                         docker login --username AWS --password-stdin ${params.ecr_repo_url}
 
                         # Stop/Remove old container
