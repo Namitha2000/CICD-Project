@@ -8,22 +8,11 @@ pipeline {
 
     parameters {
         
-        activeChoice(
+        choice(
         name: 'BRANCH',
-        description: 'Select branch to build',
-        choiceType: 'PT_SINGLE_SELECT',
-        filterLength: 1,
-        filterable: false,
-        script: [
-            $class: 'GroovyScript',
-            script: [
-                classpath: [],
-                sandbox: true,
-                script: '''return ['dev', 'UIT', 'master']'''
-            ]
-        ]
-    )         
-  
+        choices: ['dev', 'UIT', 'master'],
+        description: 'Select branch to build'
+    )
         string(name: 'sonar_IP', defaultValue: '13.63.34.172', description: 'SonarQube Server IP')
         string(name: 'docker_build_IP', defaultValue: '<YOUR_BUILD_SERVER_IP>', description: 'IP of server for Docker Build')
         string(name: 'deploy_IP', defaultValue: '13.50.101.149', description: 'IP of Final Deployment Server')
