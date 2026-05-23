@@ -67,19 +67,22 @@ pipeline {
 
         stage('2. SonarQube Analysis') {
 
-            steps {
+    steps {
 
-                dir('webapp') {
+        withSonarQubeEnv('sonar-server') {
 
-                    sh """
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=CICDProject \
-                    -Dsonar.host.url=${SONARQUBE_URL} \
-                    -Dsonar.token=${SONARQUBE_TOKEN}
-                    """
-                }
+            dir('webapp') {
+
+                sh """
+                mvn sonar:sonar \
+                -Dsonar.projectKey=CICDProject \
+                -Dsonar.host.url=${SONARQUBE_URL} \
+                -Dsonar.token=${SONARQUBE_TOKEN}
+                """
             }
         }
+    }
+}
 
         stage('3. Quality Gate') {
 
@@ -107,7 +110,7 @@ pipeline {
             steps {
 
                 withCredentials([[
-                    \$class: 'AmazonWebServicesCredentialsBinding',
+                    $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-ecr-credentials'
                 ]]) {
 
@@ -153,7 +156,7 @@ pipeline {
 
                     git commit -m "Updated image to ${env.IMAGE_TAG}"
 
-                    git push origin ${params.BRANCH}
+                    git push origin HEAD:${params.BRANCH}
                     """
                 }
             }
