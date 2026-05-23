@@ -21,7 +21,7 @@ spec:
       containers:
         - name: webapp
 
-          image: IMAGE_PLACEHOLDER
+          image: 513616569996.dkr.ecr.eu-north-1.amazonaws.com/cicd-repo:master-b0c8a64-17
 
           ports:
             - containerPort: 8080
