@@ -89,6 +89,7 @@ pipeline {
                     credentialsId: 'aws-ecr-credentials'
                 ]]) {
                     sh """
+                       
                         aws ecr get-login-password --region ${params.aws_region} | \
                         docker login --username AWS \
                         --password-stdin ${ECR_REGISTRY}
