@@ -114,21 +114,31 @@ pipeline {
                     )
                 ]) {
                     sh """
-                        git clone https://${GIT_USER}:${GIT_TOKEN}@${GITOPS_REPO} gitops
-
+                        # Clean up any leftover directory from previous runs
+                        rm -rf gitops
+                        
+                        # Clone using the environment variables
+                        git clone https://${GIT_USER}:${GIT_TOKEN}@\${GITOPS_REPO} gitops
                         cd gitops
-
+                        
+                        # Update the image tag in deployment manifest
                         sed -i 's|image:.*|image: ${env.IMAGE_TAG}|g' deployment/deployment.yaml
-
+                        
+                        # Configure Git identifiers
                         git config user.email "jenkins@cicd.com"
                         git config user.name "Jenkins"
+                        
+                        # Commit changes
                         git add deployment/deployment.yaml
                         git commit -m "Updated image to ${env.IMAGE_TAG}"
-                        git push origin HEAD:${params.BRANCH}
+                        
+                        # Push explicitly using the token URL to prevent 403 errors
+                        git push https://${GIT_USER}:${GIT_TOKEN}@\${GITOPS_REPO} HEAD:\${params.BRANCH}
                     """
                 }
             }
         }
+
     }
 
     post {
