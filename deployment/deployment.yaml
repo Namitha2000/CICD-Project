@@ -18,6 +18,10 @@ spec:
         app: webapp
 
     spec:
+
+      imagePullSecrets:
+        - name: ecr-secret
+
       containers:
         - name: webapp
 
@@ -25,5 +29,3 @@ spec:
 
           ports:
             - containerPort: 8080
-      imagePullSecrets:
-      - name: ecr-secret        
