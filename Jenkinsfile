@@ -30,11 +30,11 @@ pipeline {
 
         SONARQUBE_URL = "http://${params.sonar_IP}:30090"
 
-        SONARQUBE_TOKEN = credentials('sonar-token')
+        SONARQUBE_TOKEN = credentials('SonarToken')
 
-        ECR_REGISTRY = "248877153012.dkr.ecr.eu-north-1.amazonaws.com"
+        ECR_REGISTRY = "513616569996.dkr.ecr.eu-north-1.amazonaws.com"
 
-        ECR_REPO = "cicd-project"
+        ECR_REPO = "cicd-repo"
 
         GITOPS_REPO = "github.com/Namitha2000/CICD-Project.git"
     }
@@ -46,7 +46,7 @@ pipeline {
             steps {
 
                 git branch: "${params.BRANCH}",
-                    credentialsId: 'jenkins-ssh-key',
+                    credentialsId: 'jenkins-git-ssh-key',
                     url: 'git@github.com:Namitha2000/CICD-Project.git'
 
                 script {
@@ -167,6 +167,7 @@ pipeline {
 
         always {
 
+          node(null) {
             cleanWs()
         }
     }
