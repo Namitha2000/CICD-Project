@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     tools {
@@ -7,122 +8,163 @@ pipeline {
     }
 
     parameters {
+
         choice(
             name: 'BRANCH',
             choices: ['dev', 'UIT', 'master'],
-            description: 'Select branch to build'
+            description: 'Select branch'
         )
-        string(name: 'sonar_IP',        defaultValue: '13.63.34.172')
-        string(name: 'docker_build_IP', defaultValue: '16.170.246.244')
-        string(name: 'deploy_IP',       defaultValue: '13.50.101.149')
-        string(name: 'ecr_repo_url',    defaultValue: '248877153012.dkr.ecr.eu-north-1.amazonaws.com/cicd-project')
-        string(name: 'aws_region',      defaultValue: 'eu-north-1')
+
+        string(
+            name: 'sonar_IP',
+            defaultValue: '13.48.131.179'
+        )
+
+        string(
+            name: 'aws_region',
+            defaultValue: 'eu-north-1'
+        )
     }
 
     environment {
-        SONARQUBE_URL   = "http://${params.sonar_IP}:9000"
+
+        SONARQUBE_URL = "http://${params.sonar_IP}:30090"
+
         SONARQUBE_TOKEN = credentials('sonar-token')
+
+        ECR_REGISTRY = "248877153012.dkr.ecr.eu-north-1.amazonaws.com"
+
+        ECR_REPO = "cicd-project"
+
+        GITOPS_REPO = "github.com/Namitha2000/CICD-Project.git"
     }
 
     stages {
 
         stage('1. Checkout Code') {
+
             steps {
+
                 git branch: "${params.BRANCH}",
                     credentialsId: 'jenkins-ssh-key',
                     url: 'git@github.com:Namitha2000/CICD-Project.git'
 
                 script {
-                    def commitShort = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    def ecrUrl = params.ecr_repo_url
-                    def branch = params.BRANCH
 
-                    IMAGE_TAG = "${ecrUrl}:${branch}-${commitShort}-${BUILD_NUMBER}"
+                    def commitShort = sh(
+                        script: "git rev-parse --short HEAD",
+                        returnStdout: true
+                    ).trim()
 
-                    // Export to env explicitly
+                    IMAGE_TAG = "${ECR_REGISTRY}/${ECR_REPO}:${params.BRANCH}-${commitShort}-${BUILD_NUMBER}"
+
                     env.IMAGE_TAG = IMAGE_TAG
 
-                    echo "IMAGE_TAG = ${env.IMAGE_TAG}"
+                    echo "Docker Image = ${env.IMAGE_TAG}"
                 }
             }
         }
 
-        stage('2. Sonarqube Analysis') {
+        stage('2. SonarQube Analysis') {
+
             steps {
+
                 dir('webapp') {
-                    sh '''
+
+                    sh """
                     mvn sonar:sonar \
                     -Dsonar.projectKey=CICDProject \
-                    -Dsonar.host.url=$SONARQUBE_URL \
-                    -Dsonar.token=$SONARQUBE_TOKEN
-                    '''
+                    -Dsonar.host.url=${SONARQUBE_URL} \
+                    -Dsonar.token=${SONARQUBE_TOKEN}
+                    """
                 }
             }
         }
 
-        stage('3. Docker Build & Push to ECR') {
+        stage('3. Quality Gate') {
+
             steps {
-                sshagent(['docker-server']) {
-                    sh '''
-                    set -e
 
-                    echo "Using IMAGE_TAG=$IMAGE_TAG"
+                timeout(time: 5, unit: 'MINUTES') {
 
-                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.docker_build_IP + ''' 'mkdir -p ~/build_temp'
-                    
-                    scp -o StrictHostKeyChecking=no -r ./* ubuntu@''' + params.docker_build_IP + ''':~/build_temp/
-
-                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.docker_build_IP + ''' << EOF
-                        set -e
-                        cd ~/build_temp
-
-                        echo "Logging into ECR..."
-                        aws ecr get-login-password --region ''' + params.aws_region + ''' | \\
-                        docker login --username AWS --password-stdin ''' + params.ecr_repo_url + '''
-
-                        echo "Building Docker image..."
-                        docker build -t ''' + '${IMAGE_TAG}' + ''' .
-
-                        echo "Pushing Docker image..."
-                        docker push ''' + '${IMAGE_TAG}' + '''
-
-                        docker rmi ''' + '${IMAGE_TAG}' + '''
-                        rm -rf ~/build_temp
-EOF
-                    '''
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        stage('4. Deploy to Production EC2') {
+        stage('4. Docker Build') {
+
             steps {
-                sshagent(['docker-server']) {
-                    sh '''
-                    ssh -o StrictHostKeyChecking=no ubuntu@''' + params.deploy_IP + ''' << EOF
-                        set -e
 
-                        aws ecr get-login-password --region ''' + params.aws_region + ''' | \\
-                        docker login --username AWS --password-stdin ''' + params.ecr_repo_url + '''
+                sh """
+                docker build -t ${env.IMAGE_TAG} .
+                """
+            }
+        }
 
-                        docker stop webapp-container || true
-                        docker rm webapp-container || true
+        stage('5. Push to AWS ECR') {
 
-                        docker pull ''' + '${IMAGE_TAG}' + '''
+            steps {
 
-                        docker run -d --name webapp-container -p 8080:8080 ''' + '${IMAGE_TAG}' + '''
+                withCredentials([[
+                    \$class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-ecr-credentials'
+                ]]) {
 
-                        docker image prune -af
-EOF
-                    '''
+                    sh """
+                    aws ecr get-login-password --region ${params.aws_region} | \
+                    docker login --username AWS \
+                    --password-stdin ${ECR_REGISTRY}
+
+                    docker push ${env.IMAGE_TAG}
+
+                    docker tag ${env.IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPO}:latest
+
+                    docker push ${ECR_REGISTRY}/${ECR_REPO}:latest
+                    """
+                }
+            }
+        }
+
+        stage('6. Update Kubernetes Manifest') {
+
+            steps {
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-gitops-credentials',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GIT_TOKEN'
+                    )
+                ]) {
+
+                    sh """
+                    git clone https://${GIT_USER}:${GIT_TOKEN}@${GITOPS_REPO} gitops
+
+                    cd gitops
+
+                    sed -i 's|image:.*|image: ${env.IMAGE_TAG}|g' deployment/deployment.yaml
+
+                    git config user.email "jenkins@cicd.com"
+
+                    git config user.name "Jenkins"
+
+                    git add deployment/deployment.yaml
+
+                    git commit -m "Updated image to ${env.IMAGE_TAG}"
+
+                    git push origin ${params.BRANCH}
+                    """
                 }
             }
         }
     }
 
     post {
+
         always {
+
             cleanWs()
         }
     }
 }
-
