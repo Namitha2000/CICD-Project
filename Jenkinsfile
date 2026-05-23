@@ -113,7 +113,7 @@ pipeline {
                         passwordVariable: 'GIT_TOKEN'
                     )
                 ]) {
-                    sh """
+                    sh '''
                         # Clean up any leftover directory from previous runs
                         rm -rf gitops
                         
@@ -122,8 +122,8 @@ pipeline {
                         cd gitops
                         
                         # Update the image tag in deployment manifest
-                        sed -i 's|image:.*|image: ${env.IMAGE_TAG}|g' deployment/deployment.yaml
-                        
+                        sed -i "s|image:.*|image: ${IMAGE_TAG}|g" deployment/deployment.yaml
+
                         # Configure Git identifiers
                         git config user.email "jenkins@cicd.com"
                         git config user.name "Jenkins"
@@ -133,8 +133,9 @@ pipeline {
                         git commit -m "Updated image to ${env.IMAGE_TAG}"
                         
                         # Push explicitly using the token URL to prevent 403 errors
-                        git push https://${GIT_USER}:${GIT_TOKEN}@\${GITOPS_REPO} HEAD:\${params.BRANCH}
-                    """
+                        git push origin HEAD:${BRANCH}
+
+                        '''
                 }
             }
         }
